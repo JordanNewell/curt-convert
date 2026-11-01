@@ -33,5 +33,13 @@
 		"claude-code",
 		"transcript",
 		"converter"
-	]
+	],
+	"repository": {
+		"url": "https://github.com/JordanNewell/curt-convert.git",
+		"type": "git"
+	},
+	"homepage": "https://github.com/JordanNewell/curt-convert#readme",
+	"bugs": {
+		"url": "https://github.com/JordanNewell/curt-convert/issues"
+	}
 }
