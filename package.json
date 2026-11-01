@@ -1,6 +1,6 @@
 {
 	"name": "curt-convert",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Convert Claude Code session transcripts (JSONL) to .curt conversation files",
 	"license": "MIT",
 	"type": "module",
