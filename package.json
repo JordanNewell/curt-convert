@@ -1,0 +1,37 @@
+{
+	"name": "curt-convert",
+	"version": "0.1.0",
+	"description": "Convert Claude Code session transcripts (JSONL) to .curt conversation files",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=18"
+	},
+	"bin": {
+		"curt-convert": "dist/cli.js"
+	},
+	"main": "dist/convert.js",
+	"types": "dist/convert.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"test": "vitest run",
+		"prepack": "npm run build"
+	},
+	"dependencies": {
+		"curt-format": "^1.2.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"typescript": "^5.6.0",
+		"vitest": "^3.0.0"
+	},
+	"keywords": [
+		"curt",
+		"claude-code",
+		"transcript",
+		"converter"
+	]
+}
