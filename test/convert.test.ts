@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { parseCurt, serializeCurt } from "curt-format";
 import {
 	convertTranscript,
 	parseTimestamp,
+	resolveOutputName,
 	serializeResult,
 	stripSystemReminders,
 } from "../src/convert.js";
@@ -184,5 +186,101 @@ describe("timestamp helper", () => {
 		);
 		expect(parseTimestamp("not-a-date")).toBe(0);
 		expect(parseTimestamp(undefined)).toBe(0);
+	});
+});
+
+describe("resolveOutputName (bulk collision safety)", () => {
+	// Parent + sidechain JSONL files share one sessionId; their
+	// curtFilename outputs collide.
+	const jsonl = (uuid: string) =>
+		JSON.stringify({
+			type: "user",
+			uuid,
+			sessionId: "shared-session",
+			timestamp: "2026-10-01T10:00:00.000Z",
+			message: { role: "user", content: "hello there" },
+		}) + "\n";
+	const nameOf = (uuid: string) =>
+		convertTranscript(jsonl(uuid), uuid).conversation.id;
+
+	it("gives two same-sessionId inputs two distinct, deterministic names", () => {
+		const seen = new Set<string>();
+		const a = resolveOutputName("2026-10-01 hello-there shared-session.curt", "C:/a/parent.jsonl", seen);
+		const b = resolveOutputName("2026-10-01 hello-there shared-session.curt", "C:/a/sidechain.jsonl", seen);
+		expect(a).toBe("2026-10-01 hello-there shared-session.curt");
+		expect(b).toMatch(/^2026-10-01 hello-there shared-session-[0-9a-f]{6}\.curt$/);
+		expect(a).not.toBe(b);
+		// deterministic across runs
+		const seen2 = new Set<string>();
+		expect(resolveOutputName("2026-10-01 hello-there shared-session.curt", "C:/a/parent.jsonl", seen2)).toBe(a);
+		expect(resolveOutputName("2026-10-01 hello-there shared-session.curt", "C:/a/sidechain.jsonl", seen2)).toBe(b);
+	});
+
+	it("leaves non-colliding names unchanged", () => {
+		const seen = new Set<string>();
+		expect(resolveOutputName("x.curt", "C:/p/1.jsonl", seen)).toBe("x.curt");
+		expect(resolveOutputName("y.curt", "C:/p/2.jsonl", seen)).toBe("y.curt");
+		expect(seen.size).toBe(2);
+	});
+
+	it("discriminator for a colliding input depends only on its source path", () => {
+		const seenA = new Set<string>();
+		const seenB = new Set<string>();
+		resolveOutputName("same.curt", "C:/s/two.jsonl", seenA);
+		const a = resolveOutputName("same.curt", "C:/s/one.jsonl", seenA);
+		resolveOutputName("same.curt", "C:/s/three.jsonl", seenB);
+		const b = resolveOutputName("same.curt", "C:/s/one.jsonl", seenB);
+		expect(a).toBe(b);
+		expect(a).toMatch(/^same-[0-9a-f]{6}\.curt$/);
+	});
+
+	it("bulk-converting a shared-sessionId pair writes two files, deterministically", () => {
+		// Fixed path (not mkdtemp): the discriminator hashes the source
+		// path, so determinism across runs requires identical paths.
+		const dir = join(tmpdir(), "curt-convert-collision-test");
+		const run = () => {
+			rmSync(dir, { recursive: true, force: true });
+			mkdirSync(dir, { recursive: true });
+			try {
+				const parent = join(dir, "parent.jsonl");
+				const sidechain = join(dir, "sidechain.jsonl");
+				writeFileSync(parent, jsonl("u-1"));
+				writeFileSync(sidechain, jsonl("u-2"));
+				const seen = new Set<string>();
+				for (const file of [parent, sidechain]) {
+					const { conversation } = convertTranscript(readFileSync(file, "utf8"));
+					const base = "2026-10-01 hello-there shared-session.curt";
+					writeFileSync(join(dir, resolveOutputName(base, file, seen)), serializeResult({ conversation, stats: {
+						messages: 1, toolCalls: 0, toolResults: 0, unlinkedToolResults: 0,
+						skippedNoise: 0, skippedMeta: 0, parseErrors: 0,
+					} }));
+				}
+				return readdirSync(dir).filter((f) => f.endsWith(".curt")).sort();
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		};
+		const first = run();
+		expect(first).toHaveLength(2);
+		// "-" sorts before ".", so the discriminated name comes first
+		expect(first[0]).toMatch(/shared-session-[0-9a-f]{6}\.curt$/);
+		expect(first[1]).toBe("2026-10-01 hello-there shared-session.curt");
+		expect(run()).toEqual(first);
+	});
+
+	it("both written outputs still round-trip through parseCurt", () => {
+		const seen = new Set<string>();
+		const names = [
+			resolveOutputName("2026-10-01 hello-there shared-session.curt", "C:/a/parent.jsonl", seen),
+			resolveOutputName("2026-10-01 hello-there shared-session.curt", "C:/a/sidechain.jsonl", seen),
+		];
+		for (const name of names) {
+			const { conversation } = convertTranscript(jsonl("u-1"));
+			expect(parseCurt(serializeResult({ conversation, stats: {
+				messages: 1, toolCalls: 0, toolResults: 0, unlinkedToolResults: 0,
+				skippedNoise: 0, skippedMeta: 0, parseErrors: 0,
+			} }))).not.toBeNull();
+			expect(name.endsWith(".curt")).toBe(true);
+		}
 	});
 });

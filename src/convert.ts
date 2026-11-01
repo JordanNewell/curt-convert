@@ -19,6 +19,7 @@
  *   `message.usage` carries token counts (dropped).
  */
 
+import { createHash } from "node:crypto";
 import {
 	type CurtConversation,
 	type CurtMessage,
@@ -361,4 +362,34 @@ export function serializeResult(result: ConvertResult): string {
 		GENERATOR,
 		result.conversation.extensions as string[] | undefined,
 	);
+}
+
+/**
+ * Deterministic, collision-free output filename for a bulk run.
+ *
+ * `curtFilename` derives its name from `createdAt` + `conversation.id`, and
+ * parent sessions share their `sessionId` with sidechain (subagent) JSONL
+ * files, so different inputs can produce identical names and silently
+ * overwrite. The first occurrence keeps the plain `curtFilename` output;
+ * later ones get a `-<6 hex>` discriminator derived from a SHA-256 of the
+ * source file's absolute path — stable across runs, no timestamps or
+ * randomness. SPEC.md's naming rule is a convention (readers must not depend
+ * on file names), so the suffixed name stays spec-compatible.
+ */
+export function resolveOutputName(
+	base: string,
+	sourcePath: string,
+	seen: Set<string>,
+): string {
+	if (!seen.has(base)) {
+		seen.add(base);
+		return base;
+	}
+	const hex = createHash("sha256").update(sourcePath).digest("hex");
+	const tagged = (n: number) =>
+		base.replace(/\.curt$/, `-${hex.slice(0, n)}.curt`);
+	let name = tagged(6);
+	if (seen.has(name)) name = tagged(12);
+	seen.add(name);
+	return name;
 }
