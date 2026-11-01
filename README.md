@@ -5,8 +5,15 @@ Convert Claude Code session transcripts (`.jsonl`) into
 format. Built on [`curt-format`](https://www.npmjs.com/package/curt-format)
 (reference implementation, v1 core).
 
+> **Warning: output is transcript-equivalent.** Conversion is faithful, not
+> redacting: if the transcript contains secrets (API keys, tokens, hostnames,
+> private paths, unreleased code), the `.curt` file contains them too. Do not
+> share, commit, or publish `.curt` output without scrubbing it first. The
+> fixtures in `test/fixtures/` are fully synthetic; no real transcript content
+> is committed to this repo.
+
 ```sh
-npm i -g .            # or: npx curt-convert
+npm install -g curt-convert   # or: npx curt-convert
 curt-convert C:/Users/you/.claude/projects/C--tmp-demo/abc-123.jsonl
 curt-convert C:/Users/you/.claude/projects/C--tmp-demo/ -o ./out
 curt-convert "**/*.jsonl" -o ./out
@@ -17,6 +24,10 @@ curt-convert session.jsonl --stdout > session.curt
 - Output defaults to alongside each input; `-o/--out` redirects to a directory.
 - Output file names follow the Curtis bulk convention
   (`YYYY-MM-DD <slug> <suffix>.curt`) via `curtFilename()`.
+- Bulk runs never overwrite: when two inputs produce the same output name
+  (parent sessions and their sidechain files share a `sessionId`), later
+  inputs get a deterministic `-<6 hex>` suffix derived from the source file
+  path — stable across runs, no randomness.
 - Every file is re-parsed with `parseCurt` before it is written; a file that
   fails round-trip validation is never written (set `CURT_CONVERT_SELFCHECK=0`
   to skip).
@@ -50,7 +61,10 @@ Lines with any other `type` are noise and dropped: `summary`, `system`,
 `file-history-delta`, `agent-setting`, `atis-latch`, `last-prompt`,
 `agent-name`, `api-request*`, `pr-link`, `fork-context-ref`, `started`,
 `result`, `failed`, `launched`, `continued-in`, and anything unrecognized.
-Unparseable lines are counted in stats, never fatal.
+Unparseable lines are counted in stats, never fatal. User/assistant entries
+that end up with no content at all (whitespace-only text, reminder-only user
+turns, assistant entries with empty block arrays) are skipped too and counted
+as meta, not conversation.
 
 ## Documented losses
 
@@ -81,18 +95,18 @@ still validates.
 
 ## Security
 
-Converting is faithful: if the transcript contains secrets (API keys, tokens,
-hostnames, private paths), the `.curt` file contains them too. Treat `.curt`
-output as transcript-equivalent — do not share without scrubbing. The
-fixtures in `test/fixtures/` are fully synthetic; no real transcript content
-is committed.
+See the warning at the top of this README: `.curt` output is
+transcript-equivalent. Conversion adds nothing and removes only harness
+chatter (`<system-reminder>` spans, meta/noise lines) — everything else in
+the conversation, including anything sensitive that was in the session,
+survives verbatim. Scrub before sharing.
 
 ## Development
 
 ```sh
 npm i
-npm test       # vitest, 25 tests
+npm test       # vitest, 30 tests
 npm run build  # tsc -> dist/
 ```
 
-MIT. Local project; not published.
+MIT — see [LICENSE](LICENSE).

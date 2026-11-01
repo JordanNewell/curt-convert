@@ -26,7 +26,7 @@ import {
 	serializeCurt,
 } from "curt-format";
 
-export const GENERATOR = "curt-convert@0.1.0";
+export const GENERATOR = "curt-convert@1.0.0";
 
 /** Extension used to link tool calls to their results (see EXTENSIONS.md). */
 export const TOOL_LINKAGE = "tool-linkage";
